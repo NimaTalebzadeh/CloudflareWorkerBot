@@ -1,13 +1,14 @@
 services:
-  youtube-bot:
-    build: ../YouTubeDownloaderBot
-    container_name: youtube-downloader-bot
+  calculator-bot:
+    build: ../AdvancedCalculaterBot
+    container_name: advanced-calculator-bot
     restart: unless-stopped
     environment:
-      - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_YT}
-      - PORT=5000
+      - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_CALC}
+      - ADMIN_IDS=${ADMIN_IDS_CALC}
+      - PORT=5001
     ports:
-      - "5000:5000"
+      - "5001:5001"
 
   cloudflare-bot:
     build: ../CloudflareWorkerBot
@@ -15,6 +16,6 @@ services:
     restart: unless-stopped
     environment:
       - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_CF}
-      - PORT=5001
+      - PORT=5002
     ports:
-      - "5001:5001"
+      - "5002:5002"

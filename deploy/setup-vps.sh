@@ -22,13 +22,14 @@ mkdir -p "$BOTS_DIR"
 
 # Clone bot repositories
 echo "Cloning AdvancedCalculaterBot..."
-git clone https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git "$BOTS_DIR/AdvancedCalculaterBot" 2>/dev/null || echo "Repo already exists"
+git clone https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git "$BOTS_DIR/AdvancedCalculaterBot"
 
 echo "Cloning CloudflareWorkerBot..."
-git clone https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git "$BOTS_DIR/CloudflareWorkerBot" 2>/dev/null || echo "Repo already exists"
+git clone https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git "$BOTS_DIR/CloudflareWorkerBot"
 
-echo "Cloning YouTubeDownloaderBot..."
-git clone https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git "$BOTS_DIR/YouTubeDownloaderBot" 2>/dev/null || echo "Repo already exists"
+# Copy deploy files
+echo "Setting up deployment configs..."
+cp "$BOTS_DIR/AdvancedCalculaterBot/docker-compose.yml" "$BOTS_DIR/docker-compose.yml" 2>/dev/null || true
 
 # Create .env file if not exists
 if [ ! -f "$BOTS_DIR/.env" ]; then
@@ -40,17 +41,13 @@ ADMIN_IDS_CALC=your_telegram_user_id_here
 
 # Cloudflare Worker Bot
 TELEGRAM_BOTTOKEN_CF=your_cloudflare_bot_token_here
-ADMIN_USER_IDS=your_telegram_user_id_here
-
-# YouTube Downloader Bot
-TELEGRAM_BOTTOKEN_YT=your_youtube_bot_token_here
 EOF
     echo ""
-    echo "!!! EDIT $BOTS_DIR/.env with your real bot tokens !!!"
+    echo "!!! EDIT /opt/bots/.env with your real bot tokens !!!"
     echo ""
 fi
 
-# Create shared docker-compose.yml
+# Copy the shared docker-compose.yml
 cat > "$BOTS_DIR/docker-compose.yml" << 'DOCKERCOMPOSE'
 services:
   calculator-bot:
@@ -70,20 +67,9 @@ services:
     restart: unless-stopped
     environment:
       - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_CF}
-      - ADMIN_USER_IDS=${ADMIN_USER_IDS}
       - PORT=5002
     ports:
       - "5002:5002"
-
-  youtube-bot:
-    build: ./YouTubeDownloaderBot
-    container_name: youtube-downloader-bot
-    restart: unless-stopped
-    environment:
-      - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_YT}
-      - PORT=5000
-    ports:
-      - "5000:5000"
 DOCKERCOMPOSE
 
 # Create auto-update script
@@ -93,8 +79,8 @@ set -e
 
 cd /opt/bots
 
-REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "YouTubeDownloaderBot")
-BOTS=("calculator-bot" "cloudflare-bot" "youtube-bot")
+REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot")
+BOTS=("calculator-bot" "cloudflare-bot")
 
 for i in "${!REPOS[@]}"; do
   repo="${REPOS[$i]}"
@@ -126,7 +112,7 @@ AUTOUPDATE
 
 chmod +x "$BOTS_DIR/auto-update.sh"
 
-# Start all bots
+# Start both bots
 echo "Starting bots..."
 cd "$BOTS_DIR"
 docker compose up -d
@@ -144,9 +130,6 @@ echo ""
 echo "To view bot logs:"
 echo "  docker logs -f advanced-calculator-bot"
 echo "  docker logs -f cloudflare-worker-bot"
-echo "  docker logs -f youtube-downloader-bot"
 echo ""
 echo "To manually trigger update:"
 echo "  /opt/bots/auto-update.sh"
-echo ""
-echo "!!! IMPORTANT: Edit $BOTS_DIR/.env with your bot tokens before the bots will work !!!"
