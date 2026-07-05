@@ -167,6 +167,19 @@ public sealed class BotUpdateRouter
                         await HandleUploadIpsAddHelpAsync(bot, chatId, userId, ct);
                         return;
 
+                    case "/generate":
+                        _sessionManager.ResetSession(userId);
+                        var genSession = _sessionManager.GetOrCreateSession(userId);
+                        genSession.CurrentStep = ConversationStep.AwaitingConfigTemplates;
+                        genSession.LastActivity = DateTime.UtcNow;
+                        await bot.SendMessage(chatId,
+                            "<b>Generate Configs</b>\n\n" +
+                            "Send your VLESS/Trojan configs (one per line) or upload a TXT file. " +
+                            "I will replace each config's IP:PORT with clean IPs matching its port, " +
+                            "rename them sequentially, and send back a TXT file.",
+                            parseMode: ParseMode.Html, cancellationToken: ct);
+                        return;
+
                     default:
                         await bot.SendMessage(chatId,
                             "<b>Unknown command.</b>\n\nSend /help to see available commands.",
@@ -309,6 +322,9 @@ public sealed class BotUpdateRouter
             <b>Deployment:</b>
               /start         - Bot overview and how to use
               /deployoptions - Deploy a new Worker (Edge Tunnel, BPB, etc.)
+
+            <b>Config Generation:</b>
+              /generate      - Generate configs with clean IPs (text or TXT file)
 
             <b>Worker Management:</b>
               /list        - List all workers in your account
@@ -791,7 +807,7 @@ public sealed class BotUpdateRouter
             foreach (var cleanIp in selected)
             {
                 var newConfig = Regex.Replace(template, $@"@{Regex.Escape(originalHost)}:{port}(?=[?#]|$)", $"@{cleanIp}");
-                newConfig = Regex.Replace(newConfig, @"#.*$", "") + $"#config-{configIndex}";
+                newConfig = Regex.Replace(newConfig, @"#.*$", "") + $"#{configIndex}";
                 allResults.Add(newConfig);
                 configIndex++;
             }
