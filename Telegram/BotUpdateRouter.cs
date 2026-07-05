@@ -17,6 +17,7 @@ public sealed class BotUpdateRouter
     private readonly ConversationHandler _conversationHandler;
     private readonly CloudflareApiService _cloudflareApi;
     private readonly CleanIpCache _cleanIpCache;
+    private readonly IConfiguration _config;
     private readonly ILogger<BotUpdateRouter> _logger;
 
     public BotUpdateRouter(
@@ -24,12 +25,14 @@ public sealed class BotUpdateRouter
         ConversationHandler conversationHandler,
         CloudflareApiService cloudflareApi,
         CleanIpCache cleanIpCache,
+        IConfiguration config,
         ILogger<BotUpdateRouter> logger)
     {
         _sessionManager = sessionManager;
         _conversationHandler = conversationHandler;
         _cloudflareApi = cloudflareApi;
         _cleanIpCache = cleanIpCache;
+        _config = config;
         _logger = logger;
     }
 
@@ -612,6 +615,7 @@ public sealed class BotUpdateRouter
             return;
         }
 
+        _sessionManager.ResetSession(userId);
         var session = _sessionManager.GetOrCreateSession(userId);
         session.CurrentStep = ConversationStep.AwaitingIpUploadReplace;
         session.LastActivity = DateTime.UtcNow;
@@ -626,6 +630,7 @@ public sealed class BotUpdateRouter
             return;
         }
 
+        _sessionManager.ResetSession(userId);
         var session = _sessionManager.GetOrCreateSession(userId);
         session.CurrentStep = ConversationStep.AwaitingIpUploadAppend;
         session.LastActivity = DateTime.UtcNow;
@@ -648,6 +653,18 @@ public sealed class BotUpdateRouter
 
         var session = _sessionManager.GetOrCreateSession(userId);
 
+        // IP upload - admin only (check before config templates to avoid conflict)
+        if (session.CurrentStep is ConversationStep.AwaitingIpUploadReplace or ConversationStep.AwaitingIpUploadAppend)
+        {
+            if (!IsAdmin(userId))
+            {
+                await bot.SendMessage(message.Chat.Id, "Admin only command.", cancellationToken: ct);
+                return;
+            }
+            await HandleDocumentIpUploadAsync(bot, message, session, ct);
+            return;
+        }
+
         // Config templates - any user can upload
         if (session.CurrentStep == ConversationStep.AwaitingConfigTemplates)
         {
@@ -655,14 +672,17 @@ public sealed class BotUpdateRouter
             return;
         }
 
-        // IP upload - admin only
-        if (!IsAdmin(userId))
-            return;
+        // No active step matching a document upload
+        await bot.SendMessage(message.Chat.Id,
+            "No active task expecting a file. Send /start to begin.",
+            cancellationToken: ct);
+    }
 
+    private async Task HandleDocumentIpUploadAsync(ITelegramBotClient bot, Message message, UserSession session, CancellationToken ct)
+    {
         try
         {
-            if (message.Document is null) return;
-            var file = await bot.GetFile(message.Document.FileId, ct);
+            var file = await bot.GetFile(message.Document!.FileId, ct);
             if (file is null || string.IsNullOrEmpty(file.FilePath)) return;
             await using var ms = new MemoryStream();
             await bot.DownloadFile(file.FilePath, ms, ct);
@@ -706,14 +726,6 @@ public sealed class BotUpdateRouter
                         parseMode: ParseMode.Html,
                         cancellationToken: ct);
                 }
-            }
-            else
-            {
-                _cleanIpCache.Update(ips);
-                await bot.SendMessage(message.Chat.Id,
-                    $"Uploaded <b>{ips.Count}</b> clean IP endpoints successfully (list replaced).",
-                    parseMode: ParseMode.Html,
-                    cancellationToken: ct);
             }
 
             session.CurrentStep = ConversationStep.Start;
@@ -829,16 +841,21 @@ public sealed class BotUpdateRouter
         _sessionManager.GetOrCreateSession(userId).CurrentStep = ConversationStep.Start;
     }
 
-    private static bool IsAdmin(long userId)
+    private bool IsAdmin(long userId)
     {
+        // Check environment variable first (for VPS/Railway deployment)
         var env = Environment.GetEnvironmentVariable("ADMIN_USER_IDS");
-        if (string.IsNullOrWhiteSpace(env))
-            return false;
+        if (!string.IsNullOrWhiteSpace(env))
+        {
+            if (env.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Any(x => long.TryParse(x, out var id) && id == userId))
+                return true;
+        }
 
-        return env
-            .Split(',', StringSplitOptions.RemoveEmptyEntries)
-            .Select(x => x.Trim())
-            .Any(x => long.TryParse(x, out var id) && id == userId);
+        // Fall back to configuration file
+        var configIds = _config.GetSection("AdminUserIds").Get<long[]>() ?? [];
+        return configIds.Contains(userId);
     }
 
     // --- Helpers ---

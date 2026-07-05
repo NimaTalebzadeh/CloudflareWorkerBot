@@ -51,6 +51,7 @@ ADMIN_IDS_CALC=your_telegram_user_id_here
 
 # Cloudflare Worker Bot
 TELEGRAM_BOTTOKEN_CF=your_cloudflare_bot_token_here
+ADMIN_IDS_CF=your_telegram_user_id_here
 
 # YouTube Downloader Bot
 TELEGRAM_BOTTOKEN_YTDL=your_ytdl_bot_token_here
@@ -89,6 +90,7 @@ services:
     restart: unless-stopped
     environment:
       - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_CF}
+      - ADMIN_USER_IDS=${ADMIN_IDS_CF}
       - PORT=5002
     ports:
       - "5002:5002"
