@@ -20,16 +20,26 @@ fi
 BOTS_DIR="/opt/bots"
 mkdir -p "$BOTS_DIR"
 
-# Clone bot repositories
-echo "Cloning AdvancedCalculaterBot..."
-git clone https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git "$BOTS_DIR/AdvancedCalculaterBot" || echo "AdvancedCalculaterBot already cloned or failed."
+# List of repositories
+declare -A REPO_URLS
+REPO_URLS["AdvancedCalculaterBot"]="https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git"
+REPO_URLS["CloudflareWorkerBot"]="https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git"
+REPO_URLS["YouTubeDownloaderBot"]="https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git"
 
-echo "Cloning CloudflareWorkerBot..."
-git clone https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git "$BOTS_DIR/CloudflareWorkerBot" || echo "CloudflareWorkerBot already cloned or failed."
+# Clone or update bot repositories
+for repo_name in "${!REPO_URLS[@]}"; do
+    repo_url="${REPO_URLS[$repo_name]}"
+    repo_path="$BOTS_DIR/$repo_name"
 
-echo "Cloning YouTubeDownloaderBot..."
-# Ensure this repo exists and has a Dockerfile correctly configured (e.g., COPY command matches project structure)
-git clone https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git "$BOTS_DIR/YouTubeDownloaderBot" || echo "YouTubeDownloaderBot already cloned or failed."
+    echo "Processing $repo_name..."
+    if [ ! -d "$repo_path" ]; then
+        echo "Cloning $repo_name..."
+        git clone "$repo_url" "$repo_path"
+    else
+        echo "Repository $repo_name already exists. Pulling latest changes..."
+        (cd "$repo_path" && git pull)
+    fi
+done
 
 # Create .env file if not exists, or append new bot's variables
 if [ ! -f "$BOTS_DIR/.env" ]; then
@@ -47,8 +57,6 @@ TELEGRAM_BOTTOKEN_YTDL=your_ytdl_bot_token_here
 EOF
 else
     echo "Updating .env file with YouTube Downloader Bot variables if missing..."
-    # Add YTDL variables if they don't exist
-    # Using grep to check for the section marker, assuming it's a good indicator
     if ! grep -q '# YouTube Downloader Bot' "$BOTS_DIR/.env"; then
         echo -e "\n# YouTube Downloader Bot\nTELEGRAM_BOTTOKEN_YTDL=your_ytdl_bot_token_here" >> "$BOTS_DIR/.env"
     else
@@ -91,8 +99,8 @@ services:
     restart: unless-stopped
     environment:
       - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_YTDL}
-      - PORT=5003 # Assuming a distinct port for YTDL bot, adjust if needed
-      - ASPNETCORE_URLS=http://0.0.0.0:5003 # Explicitly set URL if needed by bot
+      - PORT=5003
+      - ASPNETCORE_URLS=http://0.0.0.0:5003
     ports:
       - "5003:5003"
 DOCKERCOMPOSE
@@ -138,14 +146,16 @@ AUTOUPDATE
 
 chmod +x "$BOTS_DIR/auto-update.sh"
 
-# Start all bots
-echo "Starting all bots..."
+# Stop existing containers if any, then start all bots
+echo "Stopping existing bot containers (if any)..."
 cd "$BOTS_DIR"
+docker compose down || true # '|| true' to prevent script from exiting if no containers are running
+
+echo "Starting all bots..."
 docker compose up -d
 
 # Set up cron job for auto-update (every minute)
 echo "Setting up auto-update cron job (every minute)..."
-# Ensure no duplicate entries and add new one
 (crontab -l 2>/dev/null | grep -v auto-update.sh; echo "* * * * * $BOTS_DIR/auto-update.sh >> /var/log/bots-update.log 2>&1") | crontab -
 
 echo ""
