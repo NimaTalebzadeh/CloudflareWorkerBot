@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== VPS Setup for Telegram Bots ==="
+echo "=== VPS Setup for Telegram Bots (Advanced Calculator, Cloudflare Worker, YouTube Downloader) ==="
 
 # Install Docker
 if ! command -v docker &> /dev/null; then
@@ -22,16 +22,16 @@ mkdir -p "$BOTS_DIR"
 
 # Clone bot repositories
 echo "Cloning AdvancedCalculaterBot..."
-git clone https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git "$BOTS_DIR/AdvancedCalculaterBot"
+git clone https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git "$BOTS_DIR/AdvancedCalculaterBot" || echo "AdvancedCalculaterBot already cloned or failed."
 
 echo "Cloning CloudflareWorkerBot..."
-git clone https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git "$BOTS_DIR/CloudflareWorkerBot"
+git clone https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git "$BOTS_DIR/CloudflareWorkerBot" || echo "CloudflareWorkerBot already cloned or failed."
 
-# Copy deploy files
-echo "Setting up deployment configs..."
-cp "$BOTS_DIR/AdvancedCalculaterBot/docker-compose.yml" "$BOTS_DIR/docker-compose.yml" 2>/dev/null || true
+echo "Cloning YouTubeDownloaderBot..."
+# Ensure this repo exists and has a Dockerfile correctly configured (e.g., COPY command matches project structure)
+git clone https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git "$BOTS_DIR/YouTubeDownloaderBot" || echo "YouTubeDownloaderBot already cloned or failed."
 
-# Create .env file if not exists
+# Create .env file if not exists, or append new bot's variables
 if [ ! -f "$BOTS_DIR/.env" ]; then
     echo "Creating .env file..."
     cat > "$BOTS_DIR/.env" << 'EOF'
@@ -41,13 +41,27 @@ ADMIN_IDS_CALC=your_telegram_user_id_here
 
 # Cloudflare Worker Bot
 TELEGRAM_BOTTOKEN_CF=your_cloudflare_bot_token_here
+
+# YouTube Downloader Bot
+TELEGRAM_BOTTOKEN_YTDL=your_ytdl_bot_token_here
 EOF
-    echo ""
-    echo "!!! EDIT /opt/bots/.env with your real bot tokens !!!"
-    echo ""
+else
+    echo "Updating .env file with YouTube Downloader Bot variables if missing..."
+    # Add YTDL variables if they don't exist
+    # Using grep to check for the section marker, assuming it's a good indicator
+    if ! grep -q '# YouTube Downloader Bot' "$BOTS_DIR/.env"; then
+        echo -e "\n# YouTube Downloader Bot\nTELEGRAM_BOTTOKEN_YTDL=your_ytdl_bot_token_here" >> "$BOTS_DIR/.env"
+    else
+        echo "YouTube Downloader Bot variables already present in .env."
+    fi
 fi
 
-# Copy the shared docker-compose.yml
+echo ""
+echo "!!! IMPORTANT: EDIT /opt/bots/.env with your real bot tokens !!!"
+echo ""
+
+# Create docker-compose.yml
+echo "Creating docker-compose.yml..."
 cat > "$BOTS_DIR/docker-compose.yml" << 'DOCKERCOMPOSE'
 services:
   calculator-bot:
@@ -70,17 +84,29 @@ services:
       - PORT=5002
     ports:
       - "5002:5002"
+
+  ytdl-bot:
+    build: ./YouTubeDownloaderBot
+    container_name: youtube-downloader-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_YTDL}
+      - PORT=5003 # Assuming a distinct port for YTDL bot, adjust if needed
+      - ASPNETCORE_URLS=http://0.0.0.0:5003 # Explicitly set URL if needed by bot
+    ports:
+      - "5003:5003"
 DOCKERCOMPOSE
 
 # Create auto-update script
+echo "Creating auto-update.sh..."
 cat > "$BOTS_DIR/auto-update.sh" << 'AUTOUPDATE'
 #!/bin/bash
 set -e
 
 cd /opt/bots
 
-REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot")
-BOTS=("calculator-bot" "cloudflare-bot")
+REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "YouTubeDownloaderBot")
+BOTS=("calculator-bot" "cloudflare-bot" "ytdl-bot")
 
 for i in "${!REPOS[@]}"; do
   repo="${REPOS[$i]}"
@@ -112,14 +138,15 @@ AUTOUPDATE
 
 chmod +x "$BOTS_DIR/auto-update.sh"
 
-# Start both bots
-echo "Starting bots..."
+# Start all bots
+echo "Starting all bots..."
 cd "$BOTS_DIR"
 docker compose up -d
 
 # Set up cron job for auto-update (every minute)
 echo "Setting up auto-update cron job (every minute)..."
-(crontab -l 2>/dev/null | grep -v auto-update; echo "* * * * * $BOTS_DIR/auto-update.sh >> /var/log/bots-update.log 2>&1") | crontab -
+# Ensure no duplicate entries and add new one
+(crontab -l 2>/dev/null | grep -v auto-update.sh; echo "* * * * * $BOTS_DIR/auto-update.sh >> /var/log/bots-update.log 2>&1") | crontab -
 
 echo ""
 echo "=== Setup Complete ==="
@@ -130,6 +157,7 @@ echo ""
 echo "To view bot logs:"
 echo "  docker logs -f advanced-calculator-bot"
 echo "  docker logs -f cloudflare-worker-bot"
+echo "  docker logs -f youtube-downloader-bot"
 echo ""
 echo "To manually trigger update:"
 echo "  /opt/bots/auto-update.sh"
