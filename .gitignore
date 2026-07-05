@@ -1,0 +1,11 @@
+bin/
+obj/
+logs/
+Properties/
+*.user
+appsettings.json
+appsettings.*.json
+gitpush.bat
+clean_ips.txt
+run.txt
+cloudflare.png

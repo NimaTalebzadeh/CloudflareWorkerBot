@@ -1,0 +1,12 @@
+bin/
+obj/
+logs/
+.git/
+.gitignore
+*.md
+LICENSE
+gitpush.bat
+run.txt
+cloudflare.png
+NuGet.Config
+railway.json

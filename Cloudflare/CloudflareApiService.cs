@@ -1,0 +1,297 @@
+using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+
+namespace CloudflareWorkerBot.Cloudflare;
+
+public sealed class CloudflareApiService
+{
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<CloudflareApiService> _logger;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
+    public CloudflareApiService(HttpClient httpClient, ILogger<CloudflareApiService> logger)
+    {
+        _httpClient = httpClient;
+        _logger = logger;
+    }
+
+    public async Task DeployWorkerAsync(
+        string apiToken, string accountId, string scriptName,
+        string scriptContent, string? metadataJson, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put,
+            $"/client/v4/accounts/{accountId}/workers/scripts/{scriptName}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        using var content = new MultipartFormDataContent();
+        var scriptPart = new ByteArrayContent(Encoding.UTF8.GetBytes(scriptContent));
+        scriptPart.Headers.ContentType = new MediaTypeHeaderValue("application/javascript+module");
+        content.Add(scriptPart, "worker.js", "worker.js");
+
+        if (!string.IsNullOrEmpty(metadataJson))
+        {
+            var metaPart = new ByteArrayContent(Encoding.UTF8.GetBytes(metadataJson));
+            metaPart.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            content.Add(metaPart, "metadata", "metadata");
+        }
+        request.Content = content;
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("DeployWorker {ScriptName} -> {Status}", scriptName, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to deploy worker: {errors}");
+        }
+    }
+
+    public async Task<string> CreateKvNamespaceAsync(
+        string apiToken, string accountId, string title, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/client/v4/accounts/{accountId}/storage/kv/namespaces");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { title }, JsonOptions), Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("CreateKvNamespace '{Title}' -> {Status}", title, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<KvNamespaceResult>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success || apiResponse.Result is null)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to create KV namespace: {errors}");
+        }
+        return apiResponse.Result.Id;
+    }
+
+    public async Task EnableWorkersDevAsync(
+        string apiToken, string accountId, string scriptName, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put,
+            $"/client/v4/accounts/{accountId}/workers/workers/{scriptName}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new
+            {
+                name = scriptName,
+                subdomain = new { enabled = true }
+            }, JsonOptions), Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("EnableWorkersDev {ScriptName} -> {Status}", scriptName, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            _logger.LogWarning("Failed to enable workers.dev: {Errors}", errors);
+        }
+    }
+
+    public async Task<string> GetWorkersDevSubdomainAsync(
+        string apiToken, string accountId, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"/client/v4/accounts/{accountId}/workers/subdomain");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("GetWorkersDevSubdomain -> {Status}", response.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.TryGetProperty("result", out var result) &&
+            result.ValueKind == JsonValueKind.Object &&
+            result.TryGetProperty("subdomain", out var subdomain))
+        {
+            return subdomain.GetString() ?? "";
+        }
+        return "";
+    }
+
+    public async Task<string> ClaimSubdomainAsync(
+        string apiToken, string accountId, string subdomain, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch,
+            $"/client/v4/accounts/{accountId}/workers/subdomain");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { subdomain }, JsonOptions), Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("ClaimSubdomain '{Subdomain}' -> {Status}", subdomain, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.TryGetProperty("result", out var result) &&
+            result.ValueKind == JsonValueKind.Object &&
+            result.TryGetProperty("subdomain", out var claimedSubdomain))
+        {
+            return claimedSubdomain.GetString() ?? "";
+        }
+        return "";
+    }
+
+    public async Task<List<AccountResult>> GetAccountsAsync(string apiToken, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/client/v4/accounts");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<List<AccountResult>>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success || apiResponse.Result is null)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to fetch accounts: {errors}");
+        }
+        return apiResponse.Result;
+    }
+
+    // --- Worker Management ---
+
+    public async Task<List<WorkerScriptResult>> ListWorkersAsync(
+        string apiToken, string accountId, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"/client/v4/accounts/{accountId}/workers/scripts");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiListResponse<WorkerScriptResult>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to list workers: {errors}");
+        }
+        return apiResponse.Result;
+    }
+
+    public async Task<WorkerSettingsResult> GetWorkerSettingsAsync(
+        string apiToken, string accountId, string scriptName, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"/client/v4/accounts/{accountId}/workers/scripts/{scriptName}/settings");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<WorkerSettingsResult>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success || apiResponse.Result is null)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to get worker settings: {errors}");
+        }
+        return apiResponse.Result;
+    }
+
+    public async Task DeleteWorkerAsync(
+        string apiToken, string accountId, string scriptName, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete,
+            $"/client/v4/accounts/{accountId}/workers/scripts/{scriptName}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("DeleteWorker {ScriptName} -> {Status}", scriptName, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to delete worker: {errors}");
+        }
+    }
+
+    // --- Analytics ---
+
+    public async Task<WorkerAnalyticsResult> GetWorkerAnalyticsAsync(
+        string apiToken, string accountId, string scriptName, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"/client/v4/accounts/{accountId}/workers/scripts/{scriptName}/analytics");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("GetWorkerAnalytics {ScriptName} -> {Status}", scriptName, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<WorkerAnalyticsResult>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success || apiResponse.Result is null)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to get analytics: {errors}");
+        }
+        return apiResponse.Result;
+    }
+
+    // --- D1 Database ---
+
+    public async Task<string> CreateD1DatabaseAsync(
+        string apiToken, string accountId, string name, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/client/v4/accounts/{accountId}/d1/database");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { name }, JsonOptions), Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("CreateD1Database '{Name}' -> {Status}", name, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<D1DatabaseResult>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success || apiResponse.Result is null)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to create D1 database: {errors}");
+        }
+        return apiResponse.Result.Uuid;
+    }
+
+    public async Task SetSecretViaWranglerAsync(
+        string apiToken, string accountId, string scriptName,
+        string secretName, string secretValue, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "/bin/sh",
+            Arguments = $"-c \"echo '{secretValue}' | npx wrangler secret put {secretName} --name {scriptName}\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        psi.Environment["CLOUDFLARE_API_TOKEN"] = apiToken;
+        psi.Environment["CLOUDFLARE_ACCOUNT_ID"] = accountId;
+
+        using var process = Process.Start(psi)!;
+        var stdout = await process.StandardOutput.ReadToEndAsync(ct);
+        var stderr = await process.StandardError.ReadToEndAsync(ct);
+        await process.WaitForExitAsync(ct);
+
+        _logger.LogInformation("Wrangler secret put -> ExitCode: {Code}, Output: {Output}", process.ExitCode, stdout);
+        if (process.ExitCode != 0 && !string.IsNullOrEmpty(stderr))
+            _logger.LogWarning("Wrangler secret stderr: {Stderr}", stderr);
+    }
+}
