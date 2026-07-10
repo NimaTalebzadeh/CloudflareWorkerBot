@@ -5,18 +5,17 @@ BOTS_DIR="/opt/bots"
 mkdir -p "$BOTS_DIR"
 
 # 1. Define your 4 bots
-REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YoutubeDownloaderBot")
+REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
 BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "youtube-downloader-bot")
+GIT_URLS=("https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git" "https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git" "https://github.com/NimaTalebzadeh/TelegramSemanticSearch.git" "https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git")
 
 # 2. Clone/Init Git repositories
-for repo in "${REPOS[@]}"; do
+for i in "${!REPOS[@]}"; do
+    repo="${REPOS[$i]}"
+    url="${GIT_URLS[$i]}"
     if [ ! -d "$BOTS_DIR/$repo" ]; then
         echo "Cloning $repo..."
-        # Replace these with your actual git URLs
-        git clone "https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git" "$BOTS_DIR/$repo"
-        git clone "https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git" "$BOTS_DIR/$repo"
-        git clone "https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git" "$BOTS_DIR/$repo"
-        git clone "https://github.com/NimaTalebzadeh/TelegramSemanticSearch.git" "$BOTS_DIR/$repo"
+        git clone "$url" "$BOTS_DIR/$repo"
     fi
 done
 
@@ -58,7 +57,7 @@ services:
     restart: unless-stopped
     environment:
       - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_CF}
-	  - ADMIN_IDS=${ADMIN_IDS_CF}
+      - ADMIN_IDS=${ADMIN_IDS_CF}
     ports: ["5002:5002"]
 
   semantic-search-bot:
@@ -72,15 +71,16 @@ services:
       - MTPROTO__PHONENUMBER=${MTPROTO_PHONE_NUMBER}
     ports: ["5003:5003"]
 
-  fourth-bot:
-    build: ./FourthBotName
-    container_name: fourth-bot
+  ytdl-bot:
+    build: ./YouTubeDownloaderBot
+    container_name: youtube-downloader-bot
     restart: unless-stopped
     environment:
-      - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_FOURTH}
+      - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_YTDL}
     ports: ["5004:5004"]
 EOF
 
 # 5. Apply changes
 cd "$BOTS_DIR"
 docker compose up -d --build
+EOF
