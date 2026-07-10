@@ -69,7 +69,7 @@ services:
       - MTPROTO_API_ID=${MTPROTO_API_ID}
       - MTPROTO_API_HASH=${MTPROTO_API_HASH}
       - MTPROTO_PHONE_NUMBER=${MTPROTO_PHONE_NUMBER}
-	extra_hosts:
+    extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./TelegramSemanticSearch:/app/data
