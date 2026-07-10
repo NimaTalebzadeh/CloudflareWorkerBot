@@ -4,7 +4,7 @@ set -e
 cd /opt/bots
 
 REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
-BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "ytdl-bot") # container names matching docker-compose.yml
+BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "ytdl-bot")
 
 for i in "${!REPOS[@]}"; do
   repo="${REPOS[$i]}"

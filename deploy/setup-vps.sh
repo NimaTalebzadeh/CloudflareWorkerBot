@@ -6,7 +6,7 @@ mkdir -p "$BOTS_DIR"
 
 # 1. Define your 4 bots
 REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
-BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "youtube-downloader-bot")
+BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "ytdl-bot")
 GIT_URLS=("https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git" "https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git" "https://github.com/NimaTalebzadeh/TelegramSemanticSearch.git" "https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git")
 
 # 2. Clone/Init Git repositories
@@ -66,9 +66,9 @@ services:
     restart: unless-stopped
     environment:
       - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_SEMANTIC}
-      - MTPROTO__APIID=${MTPROTO_API_ID}
-      - MTPROTO__APIHASH=${MTPROTO_API_HASH}
-      - MTPROTO__PHONENUMBER=${MTPROTO_PHONE_NUMBER}
+      - MTPROTO_API_ID=${MTPROTO_API_ID}
+      - MTPROTO_API_HASH=${MTPROTO_API_HASH}
+      - MTPROTO_PHONE_NUMBER=${MTPROTO_PHONE_NUMBER}
     ports: ["5003:5003"]
 
   ytdl-bot:
@@ -80,7 +80,49 @@ services:
     ports: ["5004:5004"]
 EOF
 
-# 5. Apply changes
+# 5. Create auto-update script
+cat > "$BOTS_DIR/auto-update.sh" << 'AUTOUPDATE'
+#!/bin/bash
+set -e
+
+cd /opt/bots
+
+REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
+BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "ytdl-bot")
+
+for i in "${!REPOS[@]}"; do
+  repo="${REPOS[$i]}"
+  bot="${BOTS[$i]}"
+
+  if [ ! -d "$repo/.git" ]; then
+    echo "[$(date)] Skipping $repo - no git repo found"
+    continue
+  fi
+
+  cd "$repo"
+  git fetch origin
+  local=$(git rev-parse HEAD)
+  remote=$(git rev-parse @{u})
+
+  if [ "$local" != "$remote" ]; then
+    echo "[$(date)] Updates found for $repo. Pulling and rebuilding..."
+    git pull
+    cd /opt/bots
+    docker compose build --no-cache "$bot"
+    docker compose up -d "$bot"
+  else
+    cd /opt/bots
+  fi
+done
+
+echo "[$(date)] Auto-update check complete"
+AUTOUPDATE
+
+chmod +x "$BOTS_DIR/auto-update.sh"
+
+# 6. Set up cron job for auto-update (every minute)
+(crontab -l 2>/dev/null | grep -v auto-update; echo "* * * * * $BOTS_DIR/auto-update.sh >> /var/log/bots-update.log 2>&1") | crontab -
+
+# 7. Apply changes
 cd "$BOTS_DIR"
 docker compose up -d --build
-EOF
