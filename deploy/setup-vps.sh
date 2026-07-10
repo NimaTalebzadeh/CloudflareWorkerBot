@@ -69,6 +69,8 @@ services:
       - MTPROTO_API_ID=${MTPROTO_API_ID}
       - MTPROTO_API_HASH=${MTPROTO_API_HASH}
       - MTPROTO_PHONE_NUMBER=${MTPROTO_PHONE_NUMBER}
+	volumes:
+      - ./TelegramSemanticSearch/WTelegram.session:/app/WTelegram.session
     ports: ["5003:5003"]
 
   ytdl-bot:
