@@ -16,7 +16,6 @@ services:
     restart: unless-stopped
     environment:
       - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_CF}
-      - ADMIN_USER_IDS=${ADMIN_IDS_CF}
       - PORT=5002
     ports:
       - "5002:5002"
