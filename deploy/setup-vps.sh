@@ -65,7 +65,7 @@ services:
     container_name: semantic-search-bot
     restart: unless-stopped
     environment:
-      - Bot__Token=${TELEGRAM_BOTTOKEN_SEMANTIC}
+      - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_SEMANTIC}
       - MTPROTO__APIID=${MTPROTO_API_ID}
       - MTPROTO__APIHASH=${MTPROTO_API_HASH}
       - MTPROTO__PHONENUMBER=${MTPROTO_PHONE_NUMBER}
