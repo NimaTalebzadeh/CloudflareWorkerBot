@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== VPS Setup for Telegram Bots (Advanced Calculator, Cloudflare Worker, YouTube Downloader) ==="
+echo "=== VPS Setup for Telegram Bots ==="
 
 # Install Docker
 if ! command -v docker &> /dev/null; then
@@ -25,6 +25,7 @@ declare -A REPO_URLS
 REPO_URLS["AdvancedCalculaterBot"]="https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git"
 REPO_URLS["CloudflareWorkerBot"]="https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git"
 REPO_URLS["YouTubeDownloaderBot"]="https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git"
+REPO_URLS["TelegramSemanticSearch"]="https://github.com/NimaTalebzadeh/TelegramSemanticSearch.git"
 
 # Clone or update bot repositories
 for repo_name in "${!REPO_URLS[@]}"; do
@@ -55,13 +56,17 @@ ADMIN_IDS_CF=your_telegram_user_id_here
 
 # YouTube Downloader Bot
 TELEGRAM_BOTTOKEN_YTDL=your_ytdl_bot_token_here
+
+# Telegram Semantic Search Bot
+TELEGRAM_BOTTOKEN_SEARCH=your_semantic_search_bot_token_here
+ADMIN_IDS_SEARCH=your_telegram_user_id_here
 EOF
 else
-    echo "Updating .env file with YouTube Downloader Bot variables if missing..."
-    if ! grep -q '# YouTube Downloader Bot' "$BOTS_DIR/.env"; then
-        echo -e "\n# YouTube Downloader Bot\nTELEGRAM_BOTTOKEN_YTDL=your_ytdl_bot_token_here" >> "$BOTS_DIR/.env"
+    echo "Updating .env file with Telegram Semantic Search Bot variables if missing..."
+    if ! grep -q '# Telegram Semantic Search Bot' "$BOTS_DIR/.env"; then
+        echo -e "\n# Telegram Semantic Search Bot\nTELEGRAM_BOTTOKEN_SEARCH=your_semantic_search_bot_token_here\nADMIN_IDS_SEARCH=your_telegram_user_id_here" >> "$BOTS_DIR/.env"
     else
-        echo "YouTube Downloader Bot variables already present in .env."
+        echo "Telegram Semantic Search Bot variables already present in .env."
     fi
 fi
 
@@ -105,6 +110,20 @@ services:
       - ASPNETCORE_URLS=http://0.0.0.0:5003
     ports:
       - "5003:5003"
+
+  semantic-search-bot:
+    build: ./TelegramSemanticSearch
+    container_name: telegram-semantic-search-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOTTOKEN=${TELEGRAM_BOTTOKEN_SEARCH}
+      - ADMIN_IDS=${ADMIN_IDS_SEARCH}
+      - PORT=5004
+      - ASPNETCORE_URLS=http://0.0.0.0:5004
+    ports:
+      - "5004:5004"
+    volumes:
+      - ./TelegramSemanticSearch/data:/app/data
 DOCKERCOMPOSE
 
 # Create auto-update script
@@ -115,19 +134,20 @@ set -e
 
 cd /opt/bots
 
-REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "YouTubeDownloaderBot")
-BOTS=("calculator-bot" "cloudflare-bot" "ytdl-bot")
+REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "YouTubeDownloaderBot" "TelegramSemanticSearch")
+BOTS=("calculator-bot" "cloudflare-bot" "ytdl-bot" "semantic-search-bot")
 
 for i in "${!REPOS[@]}"; do
   repo="${REPOS[$i]}"
   bot="${BOTS[$i]}"
+  repo_path="$repo"
 
-  if [ ! -d "$repo/.git" ]; then
+  if [ ! -d "$repo_path/.git" ]; then
     echo "[$(date)] Skipping $repo - no git repo found"
     continue
   fi
 
-  cd "$repo"
+  cd "$repo_path"
   git fetch origin
   local=$(git rev-parse HEAD)
   remote=$(git rev-parse @{u})
@@ -151,7 +171,7 @@ chmod +x "$BOTS_DIR/auto-update.sh"
 # Stop existing containers if any, then start all bots
 echo "Stopping existing bot containers (if any)..."
 cd "$BOTS_DIR"
-docker compose down || true # '|| true' to prevent script from exiting if no containers are running
+docker compose down || true
 
 echo "Starting all bots..."
 docker compose up -d
@@ -170,6 +190,7 @@ echo "To view bot logs:"
 echo "  docker logs -f advanced-calculator-bot"
 echo "  docker logs -f cloudflare-worker-bot"
 echo "  docker logs -f youtube-downloader-bot"
+echo "  docker logs -f telegram-semantic-search-bot"
 echo ""
 echo "To manually trigger update:"
 echo "  /opt/bots/auto-update.sh"

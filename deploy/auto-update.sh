@@ -3,8 +3,8 @@ set -e
 
 cd "$(dirname "$0")"
 
-REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "YoutubeDownloaderBot)
-BOTS=("calculator-bot" "cloudflare-bot" "ytdl-bot)
+REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "YoutubeDownloaderBot" "TelegramSemanticSearch")
+BOTS=("calculator-bot" "cloudflare-bot" "ytdl-bot" "semantic-search-bot")
 
 for i in "${!REPOS[@]}"; do
   repo="${REPOS[$i]}"
