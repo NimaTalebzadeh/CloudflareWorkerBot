@@ -23,12 +23,23 @@ public static class WorkerScript
 
     public static string GetMetadataJson(DeploymentType type, string? resourceId = null)
     {
-        if (type == DeploymentType.Yonggekkk || type == DeploymentType.Cfnew)
+        if (type == DeploymentType.Yonggekkk)
         {
             return $$"""
                 {
                   "main_module": "worker.js",
                   "compatibility_date": "{{DateTime.UtcNow:yyyy-MM-dd}}",
+                  "bindings":[]
+                }
+                """;
+        }
+
+        if (type == DeploymentType.Cfnew)
+        {
+            return $$"""
+                {
+                  "main_module": "worker.js",
+                  "compatibility_date": "2026-01-20",
                   "bindings":[]
                 }
                 """;
