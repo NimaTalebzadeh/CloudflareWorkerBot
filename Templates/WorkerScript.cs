@@ -21,7 +21,7 @@ public static class WorkerScript
         return File.ReadAllText(path);
     }
 
-    public static string GetMetadataJson(DeploymentType type, string? resourceId = null, string? uuid = null)
+    public static string GetMetadataJson(DeploymentType type, string? resourceId = null)
     {
         if (type == DeploymentType.Yonggekkk)
         {
@@ -36,19 +36,6 @@ public static class WorkerScript
 
         if (type == DeploymentType.Cfnew)
         {
-            if (!string.IsNullOrEmpty(resourceId) && !string.IsNullOrEmpty(uuid))
-            {
-                return $$"""
-                    {
-                      "main_module": "worker.js",
-                      "compatibility_date": "2026-01-20",
-                      "bindings": [
-                        {"name":"C","type":"kv_namespace","namespace_id":"{{resourceId}}"},
-                        {"name":"u","type":"secret_text","text":"{{uuid}}"}
-                      ]
-                    }
-                    """;
-            }
             return $$"""
                 {
                   "main_module": "worker.js",
