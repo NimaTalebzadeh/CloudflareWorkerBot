@@ -415,16 +415,16 @@ public sealed class CloudflareApiService
                 {
                     preview = new
                     {
-                        secrets = new Dictionary<string, object>
+                        env_vars = new Dictionary<string, object>
                         {
-                            [secretName] = new { value = secretValue }
+                            [secretName] = new { value = secretValue, type = "secret" }
                         }
                     },
                     production = new
                     {
-                        secrets = new Dictionary<string, object>
+                        env_vars = new Dictionary<string, object>
                         {
-                            [secretName] = new { value = secretValue }
+                            [secretName] = new { value = secretValue, type = "secret" }
                         }
                     }
                 }
