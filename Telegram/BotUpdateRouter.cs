@@ -843,8 +843,9 @@ public sealed class BotUpdateRouter
 
     private bool IsAdmin(long userId)
     {
-        // Check environment variable first (for VPS/Railway deployment)
-        var env = Environment.GetEnvironmentVariable("ADMIN_USER_IDS");
+        // Check ADMIN_USER_IDS first, then ADMIN_IDS (for docker-compose compatibility)
+        var env = Environment.GetEnvironmentVariable("ADMIN_USER_IDS")
+                  ?? Environment.GetEnvironmentVariable("ADMIN_IDS");
         if (!string.IsNullOrWhiteSpace(env))
         {
             if (env.Split(',', StringSplitOptions.RemoveEmptyEntries)
