@@ -96,14 +96,16 @@ public sealed class BotUpdateRouter
                         var deployKeyboard = new InlineKeyboardMarkup(new[]
                         {
                             new[] { InlineKeyboardButton.WithCallbackData("1", "deploy:1"), InlineKeyboardButton.WithCallbackData("2", "deploy:2") },
-                            new[] { InlineKeyboardButton.WithCallbackData("3", "deploy:3"), InlineKeyboardButton.WithCallbackData("4", "deploy:4") }
+                            new[] { InlineKeyboardButton.WithCallbackData("3", "deploy:3"), InlineKeyboardButton.WithCallbackData("4", "deploy:4") },
+                            new[] { InlineKeyboardButton.WithCallbackData("5", "deploy:5") }
                         });
                         await bot.SendMessage(chatId,
                             "<b>What would you like to deploy?</b>\n\n" +
                             "1 - Edge Tunnel\n" +
                             "2 - BPB Panel\n" +
                             "3 - Nahan\n" +
-                            "4 - Yonggekkk",
+                            "4 - Yonggekkk\n" +
+                            "5 - Cfnew",
                             replyMarkup: deployKeyboard, cancellationToken: ct);
                         return;
 
@@ -285,13 +287,14 @@ public sealed class BotUpdateRouter
                     deploySession.CurrentStep = ConversationStep.DeploymentChoice;
                     deploySession.LastActivity = DateTime.UtcNow;
                     var deployKeyboard = new InlineKeyboardMarkup(new[]
-                    {
-                        new[] { InlineKeyboardButton.WithCallbackData("1", "deploy:1"), InlineKeyboardButton.WithCallbackData("2", "deploy:2") },
-                        new[] { InlineKeyboardButton.WithCallbackData("3", "deploy:3"), InlineKeyboardButton.WithCallbackData("4", "deploy:4") }
-                    });
-                    await bot.SendMessage(chatId,
-                        "<b>What would you like to deploy?</b>\n\n" +
-                        "1 - Edge Tunnel\n2 - BPB Panel\n3 - Nahan\n4 - Yonggekkk",
+                                            {
+                                                new[] { InlineKeyboardButton.WithCallbackData("1", "deploy:1"), InlineKeyboardButton.WithCallbackData("2", "deploy:2") },
+                                                new[] { InlineKeyboardButton.WithCallbackData("3", "deploy:3"), InlineKeyboardButton.WithCallbackData("4", "deploy:4") },
+                                                new[] { InlineKeyboardButton.WithCallbackData("5", "deploy:5") }
+                                            });
+                                            await bot.SendMessage(chatId,
+                                                "<b>What would you like to deploy?</b>\n\n" +
+                                                "1 - Edge Tunnel\n2 - BPB Panel\n3 - Nahan\n4 - Yonggekkk\n5 - Cfnew",
                         replyMarkup: deployKeyboard, cancellationToken: ct);
                     break;
                 case "cleanip":
@@ -324,7 +327,7 @@ public sealed class BotUpdateRouter
 
             <b>Deployment:</b>
               /start         - Bot overview and how to use
-              /deployoptions - Deploy a new Worker (Edge Tunnel, BPB, etc.)
+              /deployoptions - Deploy a new Worker (Edge Tunnel, BPB, Nahan, Yonggekkk, Cfnew)
 
             <b>Config Generation:</b>
               /generate      - Generate configs with clean IPs (text or TXT file)

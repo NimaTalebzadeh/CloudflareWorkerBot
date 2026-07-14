@@ -108,6 +108,18 @@ public sealed class ConversationHandler
                 "Send me the token (shown only once!):",
                 parseMode: ParseMode.Html, cancellationToken: ct);
         }
+        else if (input == "5")
+        {
+            session.DeploymentType = DeploymentType.Cfnew;
+            session.CurrentStep = ConversationStep.ApiToken;
+            await bot.SendMessage(chatId,
+                "<b>Cfnew selected!</b>\n\n" +
+                "Open this link to create an API token with the right permissions pre-selected:\n\n" +
+                "<a href=\"https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&name=CloudflareWorkerBot-Token\">https://dash.cloudflare.com/profile/api-tokens?...&amp;name=CloudflareWorkerBot-Token</a>\n\n" +
+                "Just review the permissions and click <b>Create Token</b>.\n\n" +
+                "Send me the token (shown only once!):",
+                parseMode: ParseMode.Html, cancellationToken: ct);
+        }
         else
         {
             await bot.SendMessage(chatId, "Please send <b>1</b>, <b>2</b>, <b>3</b>, or <b>4</b>:",
@@ -180,6 +192,16 @@ public sealed class ConversationHandler
                         "Starting Yonggekkk deployment...",
                         parseMode: ParseMode.Html, cancellationToken: ct);
                     await RunYonggekkkDeploymentAsync(bot, chatId, session, ct);
+                }
+                else if (session.DeploymentType == DeploymentType.Cfnew)
+                {
+                    session.CurrentStep = ConversationStep.Deploying;
+                    await bot.SendMessage(chatId,
+                        $"<b>Account found:</b> {EscapeHtml(accounts[0].Name)}\n" +
+                        $"<b>Worker name:</b> <code>{session.WorkerName}</code>\n\n" +
+                        "Starting Cfnew deployment...",
+                        parseMode: ParseMode.Html, cancellationToken: ct);
+                    await RunCfnewDeploymentAsync(bot, chatId, session, ct);
                 }
                 else
                 {
@@ -264,6 +286,16 @@ public sealed class ConversationHandler
                             parseMode: ParseMode.Html, cancellationToken: ct);
                         await RunYonggekkkDeploymentAsync(bot, chatId, session, ct);
                     }
+                    else if (session.DeploymentType == DeploymentType.Cfnew)
+                    {
+                        session.CurrentStep = ConversationStep.Deploying;
+                        await bot.SendMessage(chatId,
+                            $"<b>Account selected:</b> {EscapeHtml(accounts[choice - 1].Name)}\n" +
+                            $"<b>Worker name:</b> <code>{session.WorkerName}</code>\n\n" +
+                            "Starting Cfnew deployment...",
+                            parseMode: ParseMode.Html, cancellationToken: ct);
+                        await RunCfnewDeploymentAsync(bot, chatId, session, ct);
+                    }
                     else
                     {
                         session.CurrentStep = ConversationStep.AdminSecret;
@@ -315,6 +347,16 @@ public sealed class ConversationHandler
                 "Starting Yonggekkk deployment...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
             await RunYonggekkkDeploymentAsync(bot, chatId, session, ct);
+        }
+        else if (session.DeploymentType == DeploymentType.Cfnew)
+        {
+            session.CurrentStep = ConversationStep.Deploying;
+            await bot.SendMessage(chatId,
+                $"<b>Account ID saved!</b>\n" +
+                $"<b>Worker name:</b> <code>{session.WorkerName}</code>\n\n" +
+                "Starting Cfnew deployment...",
+                parseMode: ParseMode.Html, cancellationToken: ct);
+            await RunCfnewDeploymentAsync(bot, chatId, session, ct);
         }
         else
         {
@@ -781,6 +823,88 @@ public sealed class ConversationHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Yonggekkk deployment failed for user {UserId}", session.UserId);
+            session.CurrentStep = ConversationStep.Error;
+
+            var errorMsg = $"""
+                <b>Deployment Failed</b>
+
+                Completed steps:
+                {string.Join("\n", completed.Select(s => $"  \u2713 {s}"))}
+
+                <b>Error:</b>
+                <code>{EscapeHtml(ex.Message)}</code>
+
+                Send /start to try again.
+                """;
+
+            await bot.SendMessage(chatId, errorMsg,
+                parseMode: ParseMode.Html, cancellationToken: ct);
+        }
+    }
+
+    private async Task RunCfnewDeploymentAsync(ITelegramBotClient bot, long chatId, UserSession session, CancellationToken ct)
+    {
+        var completed = new List<string>();
+
+        try
+        {
+            await bot.SendMessage(chatId,
+                "<b>Step 1/2:</b> Deploying Worker script...",
+                parseMode: ParseMode.Html, cancellationToken: ct);
+
+            var scriptContent = WorkerScript.GetScript(DeploymentType.Cfnew);
+            var metadataJson = WorkerScript.GetMetadataJson(DeploymentType.Cfnew);
+
+            await _cloudflareApi.DeployWorkerAsync(
+                session.ApiToken!, session.AccountId!, session.WorkerName!,
+                scriptContent, metadataJson, ct);
+
+            await _cloudflareApi.EnableWorkersDevAsync(
+                session.ApiToken!, session.AccountId!, session.WorkerName!, ct);
+
+            completed.Add("Worker script deployed");
+
+            await bot.SendMessage(chatId,
+                "<b>Step 2/2:</b> Finalizing...",
+                parseMode: ParseMode.Html, cancellationToken: ct);
+
+            var subdomain = await GetOrClaimSubdomainAsync(session.ApiToken!, session.AccountId!, session.WorkerName!, ct);
+
+            var successMsg = string.IsNullOrEmpty(subdomain)
+                ? $"""
+                    <b>Deployment Complete! (Cfnew)</b>
+
+                    {string.Join("\n", completed.Select(s => $"  \u2713 {s}"))}
+
+                    <b>Worker name:</b> <code>{session.WorkerName}</code>
+
+                    <b>URLs:</b> Check your Cloudflare dashboard at
+                    <a href="https://dash.cloudflare.com">https://dash.cloudflare.com</a>
+                    to find your workers.dev subdomain.
+
+                    Send /start to deploy another Worker.
+                    """
+                : $"""
+                    <b>Deployment Complete! (Cfnew)</b>
+
+                    {string.Join("\n", completed.Select(s => $"  \u2713 {s}"))}
+
+                    <b>Worker name:</b> <code>{session.WorkerName}</code>
+
+                    <b>Worker URL:</b>
+                    <a href="https://{session.WorkerName}.{subdomain}.workers.dev">https://{session.WorkerName}.{subdomain}.workers.dev</a>
+
+                    Send /start to deploy another Worker.
+                    """;
+
+            await bot.SendMessage(chatId, successMsg,
+                parseMode: ParseMode.Html, cancellationToken: ct);
+
+            session.CurrentStep = ConversationStep.Done;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Cfnew deployment failed for user {UserId}", session.UserId);
             session.CurrentStep = ConversationStep.Error;
 
             var errorMsg = $"""

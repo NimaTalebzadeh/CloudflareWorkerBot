@@ -11,6 +11,7 @@ public static class WorkerScript
             DeploymentType.Bpb => "bpb.js",
             DeploymentType.Nahan => "nahan.js",
             DeploymentType.Yonggekkk => "yonggekkk.js",
+            DeploymentType.Cfnew => "cfnew.js",
             _ => "edge_tunnel.js"
         };
         var path = Path.Combine(AppContext.BaseDirectory, "Workers", fileName);
@@ -22,7 +23,7 @@ public static class WorkerScript
 
     public static string GetMetadataJson(DeploymentType type, string? resourceId = null)
     {
-        if (type == DeploymentType.Yonggekkk)
+        if (type == DeploymentType.Yonggekkk || type == DeploymentType.Cfnew)
         {
             return $$"""
                 {

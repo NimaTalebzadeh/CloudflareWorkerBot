@@ -5,5 +5,6 @@ public enum DeploymentType
     EdgeTunnel,
     Bpb,
     Nahan,
-    Yonggekkk
+    Yonggekkk,
+    Cfnew
 }
