@@ -378,7 +378,7 @@ public sealed class CloudflareApiService
                         },
                         env_vars = new Dictionary<string, object>
                         {
-                            ["u"] = new { value = uuid, type = "secret" }
+                            ["u"] = new { value = uuid }
                         }
                     },
                     production = new
@@ -389,7 +389,7 @@ public sealed class CloudflareApiService
                         },
                         env_vars = new Dictionary<string, object>
                         {
-                            ["u"] = new { value = uuid, type = "secret" }
+                            ["u"] = new { value = uuid }
                         }
                     }
                 }
