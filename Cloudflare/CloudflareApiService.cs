@@ -403,7 +403,9 @@ public sealed class CloudflareApiService
         if (patchApiResponse is null || !patchApiResponse.Success)
         {
             var errors = string.Join(", ", patchApiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
-            throw new InvalidOperationException($"Failed to configure Pages project (KV+uuid): {errors}");
+            // Include full response body for debugging
+            var detail = patchApiResponse?.Errors?.Select(e => $"{e.Message}") ?? ["Unknown error"];
+            throw new InvalidOperationException($"Failed to configure Pages project (KV+uuid): {string.Join(" | ", detail)}. Response: {patchBody[..Math.Min(patchBody.Length, 500)]}");
         }
 
         return newKvId;
