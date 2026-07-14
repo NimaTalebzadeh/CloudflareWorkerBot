@@ -337,9 +337,9 @@ public sealed class CloudflareApiService
         }
     }
 
-    public async Task<string> CreatePagesKvBindingAsync(
+    public async Task<string> ConfigurePagesProjectAsync(
         string apiToken, string accountId, string projectName,
-        string kvNamespaceId, CancellationToken ct)
+        string uuid, CancellationToken ct)
     {
         // First create KV namespace
         var kvName = $"kv-{Guid.NewGuid().ToString("N")[..8]}";
@@ -361,7 +361,7 @@ public sealed class CloudflareApiService
         }
         var newKvId = kvApiResponse.Result.Id;
 
-        // Then bind it to the Pages project
+        // Then do a single PATCH with both KV binding + env_var 'u' in one shot
         using var patchRequest = new HttpRequestMessage(HttpMethod.Patch,
             $"/client/v4/accounts/{accountId}/pages/projects/{projectName}");
         patchRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
@@ -375,6 +375,10 @@ public sealed class CloudflareApiService
                         kv_namespaces = new Dictionary<string, object>
                         {
                             ["C"] = new { namespace_id = newKvId }
+                        },
+                        env_vars = new Dictionary<string, object>
+                        {
+                            ["u"] = new { value = uuid, type = "secret" }
                         }
                     },
                     production = new
@@ -382,6 +386,10 @@ public sealed class CloudflareApiService
                         kv_namespaces = new Dictionary<string, object>
                         {
                             ["C"] = new { namespace_id = newKvId }
+                        },
+                        env_vars = new Dictionary<string, object>
+                        {
+                            ["u"] = new { value = uuid, type = "secret" }
                         }
                     }
                 }
@@ -389,13 +397,13 @@ public sealed class CloudflareApiService
 
         var patchResponse = await _httpClient.SendAsync(patchRequest, ct);
         var patchBody = await patchResponse.Content.ReadAsStringAsync(ct);
-        _logger.LogInformation("BindKvPages '{Name}' -> {Status}", projectName, patchResponse.StatusCode);
+        _logger.LogInformation("ConfigurePagesProject '{Name}' -> {Status}", projectName, patchResponse.StatusCode);
 
         var patchApiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(patchBody, JsonOptions);
         if (patchApiResponse is null || !patchApiResponse.Success)
         {
             var errors = string.Join(", ", patchApiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
-            throw new InvalidOperationException($"Failed to bind KV to Pages project: {errors}");
+            throw new InvalidOperationException($"Failed to configure Pages project (KV+uuid): {errors}");
         }
 
         return newKvId;

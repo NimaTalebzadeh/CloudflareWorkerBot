@@ -864,22 +864,11 @@ public sealed class ConversationHandler
                 "<b>Step 2/5:</b> Creating KV namespace & binding...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
-            // 2. Create KV namespace and bind to Pages project
-            var kvId = await _cloudflareApi.CreatePagesKvBindingAsync(
-                session.ApiToken!, session.AccountId!, session.WorkerName!, "", ct);
+            // 2. Create KV namespace + bind to Pages project + set UUID var 'u' in one patch
+            await _cloudflareApi.ConfigurePagesProjectAsync(
+                session.ApiToken!, session.AccountId!, session.WorkerName!, uuid, ct);
 
-            completed.Add("KV namespace created and bound to Pages project");
-
-            await bot.SendMessage(chatId,
-                "<b>Step 3/5:</b> Setting UUID variable...",
-                parseMode: ParseMode.Html, cancellationToken: ct);
-
-            // 3. Set UUID secret/variable
-            await _cloudflareApi.SetPagesSecretAsync(
-                session.ApiToken!, session.AccountId!, session.WorkerName!,
-                "u", uuid, ct);
-
-            completed.Add("UUID variable 'u' configured");
+            completed.Add("KV namespace bound and UUID variable 'u' configured");
 
             await bot.SendMessage(chatId,
                 "<b>Step 4/5:</b> Uploading Pages deployment...",
