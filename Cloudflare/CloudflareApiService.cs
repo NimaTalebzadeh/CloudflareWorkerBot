@@ -276,18 +276,26 @@ public sealed class CloudflareApiService
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"/client/v4/accounts/{accountId}/pages/projects");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(new
+        
+        var body = new
+        {
+            name = projectName,
+            production_branch = "main",
+            build_config = new
             {
-                name = projectName,
-                production_branch = "main"
-            }, JsonOptions), Encoding.UTF8, "application/json");
+                build_command = "",
+                destination_dir = ""
+            }
+        };
+        var jsonBody = JsonSerializer.Serialize(body, JsonOptions);
+        _logger.LogInformation("CreatePagesProject body: {Body}", jsonBody);
+        request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
         var response = await _httpClient.SendAsync(request, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
+        var responseBody = await response.Content.ReadAsStringAsync(ct);
         _logger.LogInformation("CreatePagesProject '{Name}' -> {Status}", projectName, response.StatusCode);
 
-        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(body, JsonOptions);
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(responseBody, JsonOptions);
         if (apiResponse is null || !apiResponse.Success)
         {
             // 409 Conflict means project already exists — that's fine
@@ -378,7 +386,7 @@ public sealed class CloudflareApiService
                         },
                         env_vars = new Dictionary<string, object>
                         {
-                            ["u"] = new { value = uuid }
+                            ["u"] = new Dictionary<string, object> { ["value"] = uuid }
                         }
                     },
                     production = new
@@ -389,7 +397,7 @@ public sealed class CloudflareApiService
                         },
                         env_vars = new Dictionary<string, object>
                         {
-                            ["u"] = new { value = uuid }
+                            ["u"] = new Dictionary<string, object> { ["value"] = uuid }
                         }
                     }
                 }
