@@ -115,9 +115,7 @@ public sealed class ConversationHandler
             await bot.SendMessage(chatId,
                 "<b>Cfnew selected!</b>\n\n" +
                 "Open this link to create an API token with the right permissions pre-selected:\n\n" +
-                "<a href=\"https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22cloudflare_pages%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&name=CloudflareWorkerBot-Token\">https://dash.cloudflare.com/profile/api-tokens?...&amp;name=CloudflareWorkerBot-Token</a>\n\n" +
-                "<b>Note:</b> Cloudflare Pages permission may not auto-select. After the link opens, " +
-                "scroll down to <b>Account Permissions</b> and manually check <b>Cloudflare Pages: Edit</b>.\n\n" +
+                "<a href=\"https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&name=CloudflareWorkerBot-Token\">https://dash.cloudflare.com/profile/api-tokens?...&amp;name=CloudflareWorkerBot-Token</a>\n\n" +
                 "Just review the permissions and click <b>Create Token</b>.\n\n" +
                 "Send me the token (shown only once!):",
                 parseMode: ParseMode.Html, cancellationToken: ct);
@@ -853,50 +851,54 @@ public sealed class ConversationHandler
         try
         {
             await bot.SendMessage(chatId,
-                "<b>Step 1/5:</b> Creating Pages project...",
+                "<b>Step 1/5:</b> Creating KV namespace...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
-            // 1. Create Pages project (or use existing)
-            await _cloudflareApi.CreatePagesProjectAsync(
-                session.ApiToken!, session.AccountId!, session.WorkerName!, ct);
+            // 1. Create KV namespace for Cfnew
+            var kvId = await _cloudflareApi.CreateKvNamespaceAsync(
+                session.ApiToken!, session.AccountId!, $"{session.WorkerName}-kv", ct);
 
-            completed.Add("Pages project created");
+            completed.Add("KV namespace created");
 
             await bot.SendMessage(chatId,
-                "<b>Step 2/5:</b> Creating KV namespace & binding...",
+                "<b>Step 2/5:</b> Deploying Worker script with KV binding + UUID...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
-            // 2. Create KV namespace + bind to Pages project + set UUID var 'u' in one patch
-            await _cloudflareApi.ConfigurePagesProjectAsync(
-                session.ApiToken!, session.AccountId!, session.WorkerName!, uuid, ct);
-
-            completed.Add("KV namespace bound and UUID variable 'u' configured");
-
-            await bot.SendMessage(chatId,
-                "<b>Step 4/5:</b> Uploading Pages deployment...",
-                parseMode: ParseMode.Html, cancellationToken: ct);
-
-            // 4. Upload _worker.js to Pages deployment
+            // 2. Deploy worker with KV binding C and secret u
             var scriptContent = WorkerScript.GetScript(DeploymentType.Cfnew);
+            var metadataJson = WorkerScript.GetMetadataJson(DeploymentType.Cfnew, kvId, uuid);
 
-            await _cloudflareApi.UploadPagesDeploymentAsync(
-                session.ApiToken!, session.AccountId!, session.WorkerName!, scriptContent, ct);
+            await _cloudflareApi.DeployWorkerAsync(
+                session.ApiToken!, session.AccountId!, session.WorkerName!,
+                scriptContent, metadataJson, ct);
 
-            completed.Add("Pages deployment uploaded");
+            completed.Add("Worker deployed with KV binding 'C' and secret 'u'");
 
             await bot.SendMessage(chatId,
-                "<b>Step 5/5:</b> Finalizing...",
+                "<b>Step 3/5:</b> Enabling workers.dev subdomain...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
+
+            // 3. Enable workers.dev subdomain
+            var subdomain = await _cloudflareApi.GetWorkersDevSubdomainAsync(
+                session.ApiToken!, session.AccountId!, ct);
+            if (string.IsNullOrEmpty(subdomain))
+            {
+                subdomain = $"{session.WorkerName}";
+                await _cloudflareApi.ClaimSubdomainAsync(
+                    session.ApiToken!, session.AccountId!, subdomain, ct);
+            }
+
+            completed.Add("workers.dev subdomain enabled");
 
             var successMsg = $"""
-                <b>Deployment Complete! (Cfnew - Pages)</b>
+                <b>Deployment Complete! (Cfnew - Workers)</b>
 
                 {string.Join("\n", completed.Select(s => $"  \u2713 {s}"))}
 
-                <b>Project name:</b> <code>{session.WorkerName}</code>
+                <b>Worker name:</b> <code>{session.WorkerName}</code>
 
                 <b>Dashboard URL:</b>
-                <a href="https://{session.WorkerName}.pages.dev/{uuid}">https://{session.WorkerName}.pages.dev/{uuid}</a>
+                <a href="https://{session.WorkerName}.{subdomain}.workers.dev/{uuid}">https://{session.WorkerName}.{subdomain}.workers.dev/{uuid}</a>
 
                 <b>UUID:</b> <code>{uuid}</code>
 
@@ -912,7 +914,7 @@ public sealed class ConversationHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Cfnew Pages deployment failed for user {UserId}", session.UserId);
+            _logger.LogError(ex, "Cfnew Workers deployment failed for user {UserId}", session.UserId);
             session.CurrentStep = ConversationStep.Error;
 
             var errorMsg = $"""
