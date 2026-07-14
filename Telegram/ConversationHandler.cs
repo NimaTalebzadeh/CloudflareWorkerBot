@@ -115,7 +115,7 @@ public sealed class ConversationHandler
             await bot.SendMessage(chatId,
                 "<b>Cfnew selected!</b>\n\n" +
                 "Open this link to create an API token with the right permissions pre-selected:\n\n" +
-                "<a href=\"https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22cloudflare_pages%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&name=CloudflareWorkerBot-Token\">https://dash.cloudflare.com/profile/api-tokens?...&amp;name=CloudflareWorkerBot-Token</a>\n\n" +
+                "<a href=\"https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22pages%22%2C%22type%22%3A%22write%22%7D%5D&accountId=*&name=CloudflareWorkerBot-Token\">https://dash.cloudflare.com/profile/api-tokens?...&amp;name=CloudflareWorkerBot-Token</a>\n\n" +
                 "Just review the permissions and click <b>Create Token</b>.\n\n" +
                 "Send me the token (shown only once!):",
                 parseMode: ParseMode.Html, cancellationToken: ct);
@@ -885,12 +885,11 @@ public sealed class ConversationHandler
                 "<b>Step 4/5:</b> Uploading Pages deployment...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
-            // 4. Create zip with _worker.js + wrangler.toml and deploy
+            // 4. Upload _worker.js to Pages deployment
             var scriptContent = WorkerScript.GetScript(DeploymentType.Cfnew);
-            var zipBytes = CreatePagesZip(scriptContent);
 
             await _cloudflareApi.UploadPagesDeploymentAsync(
-                session.ApiToken!, session.AccountId!, session.WorkerName!, zipBytes, ct);
+                session.ApiToken!, session.AccountId!, session.WorkerName!, scriptContent, ct);
 
             completed.Add("Pages deployment uploaded");
 

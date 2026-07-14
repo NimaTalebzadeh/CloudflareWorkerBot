@@ -301,16 +301,28 @@ public sealed class CloudflareApiService
 
     public async Task UploadPagesDeploymentAsync(
         string apiToken, string accountId, string projectName,
-        byte[] zipContent, CancellationToken ct)
+        string scriptContent, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"/client/v4/accounts/{accountId}/pages/projects/{projectName}/deployments");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
 
+        // Hash the script content for the manifest
+        var hashBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(scriptContent));
+        var scriptHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+        var manifest = JsonSerializer.Serialize(new
+        {
+            _worker_js = scriptHash
+        });
+
         using var content = new MultipartFormDataContent();
-        var zipPart = new ByteArrayContent(zipContent);
-        zipPart.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
-        content.Add(zipPart, "file", "pages.zip");
+        var jsPart = new ByteArrayContent(Encoding.UTF8.GetBytes(scriptContent));
+        jsPart.Headers.ContentType = new MediaTypeHeaderValue("application/javascript");
+        content.Add(jsPart, "_worker.js", "_worker.js");
+
+        var manifestPart = new StringContent(manifest, Encoding.UTF8, "application/json");
+        content.Add(manifestPart, "manifest");
         request.Content = content;
 
         var response = await _httpClient.SendAsync(request, ct);
