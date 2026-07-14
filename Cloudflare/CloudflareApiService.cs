@@ -268,6 +268,168 @@ public sealed class CloudflareApiService
         return apiResponse.Result.Uuid;
     }
 
+    // --- Pages API ---
+
+    public async Task CreatePagesProjectAsync(
+        string apiToken, string accountId, string projectName, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/client/v4/accounts/{accountId}/pages/projects");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new
+            {
+                name = projectName,
+                production_branch = "main"
+            }, JsonOptions), Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("CreatePagesProject '{Name}' -> {Status}", projectName, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success)
+        {
+            // 409 Conflict means project already exists — that's fine
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                return;
+
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to create Pages project: {errors}");
+        }
+    }
+
+    public async Task UploadPagesDeploymentAsync(
+        string apiToken, string accountId, string projectName,
+        byte[] zipContent, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/client/v4/accounts/{accountId}/pages/projects/{projectName}/deployments");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        using var content = new MultipartFormDataContent();
+        var zipPart = new ByteArrayContent(zipContent);
+        zipPart.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
+        content.Add(zipPart, "file", "pages.zip");
+        request.Content = content;
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("UploadPagesDeployment '{Name}' -> {Status}", projectName, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to upload Pages deployment: {errors}");
+        }
+    }
+
+    public async Task<string> CreatePagesKvBindingAsync(
+        string apiToken, string accountId, string projectName,
+        string kvNamespaceId, CancellationToken ct)
+    {
+        // First create KV namespace
+        var kvName = $"kv-{Guid.NewGuid().ToString("N")[..8]}";
+        using var kvRequest = new HttpRequestMessage(HttpMethod.Post,
+            $"/client/v4/accounts/{accountId}/storage/kv/namespaces");
+        kvRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        kvRequest.Content = new StringContent(
+            JsonSerializer.Serialize(new { title = kvName }, JsonOptions), Encoding.UTF8, "application/json");
+
+        var kvResponse = await _httpClient.SendAsync(kvRequest, ct);
+        var kvBody = await kvResponse.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("CreateKvNamespace '{Name}' -> {Status}", kvName, kvResponse.StatusCode);
+
+        var kvApiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<KvNamespaceResult>>(kvBody, JsonOptions);
+        if (kvApiResponse is null || !kvApiResponse.Success || kvApiResponse.Result is null)
+        {
+            var errors = string.Join(", ", kvApiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to create KV namespace: {errors}");
+        }
+        var newKvId = kvApiResponse.Result.Id;
+
+        // Then bind it to the Pages project
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch,
+            $"/client/v4/accounts/{accountId}/pages/projects/{projectName}");
+        patchRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        patchRequest.Content = new StringContent(
+            JsonSerializer.Serialize(new
+            {
+                deployment_configs = new
+                {
+                    preview = new
+                    {
+                        kv_namespaces = new[]
+                        {
+                            new { name = "KV", namespace_id = newKvId }
+                        }
+                    },
+                    production = new
+                    {
+                        kv_namespaces = new[]
+                        {
+                            new { name = "KV", namespace_id = newKvId }
+                        }
+                    }
+                }
+            }, JsonOptions), Encoding.UTF8, "application/json");
+
+        var patchResponse = await _httpClient.SendAsync(patchRequest, ct);
+        var patchBody = await patchResponse.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("BindKvPages '{Name}' -> {Status}", projectName, patchResponse.StatusCode);
+
+        var patchApiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(patchBody, JsonOptions);
+        if (patchApiResponse is null || !patchApiResponse.Success)
+        {
+            var errors = string.Join(", ", patchApiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to bind KV to Pages project: {errors}");
+        }
+
+        return newKvId;
+    }
+
+    public async Task SetPagesSecretAsync(
+        string apiToken, string accountId, string projectName,
+        string secretName, string secretValue, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch,
+            $"/client/v4/accounts/{accountId}/pages/projects/{projectName}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new
+            {
+                deployment_configs = new
+                {
+                    preview = new
+                    {
+                        secrets = new[]
+                        {
+                            new { name = secretName, value = secretValue }
+                        }
+                    },
+                    production = new
+                    {
+                        secrets = new[]
+                        {
+                            new { name = secretName, value = secretValue }
+                        }
+                    }
+                }
+            }, JsonOptions), Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogInformation("SetPagesSecret '{Name}/{Project}' -> {Status}", projectName, secretName, response.StatusCode);
+
+        var apiResponse = JsonSerializer.Deserialize<CloudflareApiResponse<object>>(body, JsonOptions);
+        if (apiResponse is null || !apiResponse.Success)
+        {
+            var errors = string.Join(", ", apiResponse?.Errors.Select(e => e.Message) ?? ["Unknown error"]);
+            throw new InvalidOperationException($"Failed to set Pages secret: {errors}");
+        }
+    }
+
     public async Task SetSecretViaWranglerAsync(
         string apiToken, string accountId, string scriptName,
         string secretName, string secretValue, CancellationToken ct)

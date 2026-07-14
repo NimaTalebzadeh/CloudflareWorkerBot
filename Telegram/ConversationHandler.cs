@@ -849,53 +849,56 @@ public sealed class ConversationHandler
         try
         {
             await bot.SendMessage(chatId,
-                "<b>Step 1/2:</b> Deploying Worker script...",
+                "<b>Step 1/4:</b> Creating Pages project...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
-            var scriptContent = WorkerScript.GetScript(DeploymentType.Cfnew);
-            var metadataJson = WorkerScript.GetMetadataJson(DeploymentType.Cfnew);
-
-            await _cloudflareApi.DeployWorkerAsync(
-                session.ApiToken!, session.AccountId!, session.WorkerName!,
-                scriptContent, metadataJson, ct);
-
-            await _cloudflareApi.EnableWorkersDevAsync(
+            // 1. Create Pages project (or use existing)
+            await _cloudflareApi.CreatePagesProjectAsync(
                 session.ApiToken!, session.AccountId!, session.WorkerName!, ct);
 
-            completed.Add("Worker script deployed");
+            completed.Add("Pages project created");
 
             await bot.SendMessage(chatId,
-                "<b>Step 2/2:</b> Finalizing...",
+                "<b>Step 2/4:</b> Creating KV namespace & binding...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
-            var subdomain = await GetOrClaimSubdomainAsync(session.ApiToken!, session.AccountId!, session.WorkerName!, ct);
+            // 2. Create KV namespace and bind to Pages project
+            var kvId = await _cloudflareApi.CreatePagesKvBindingAsync(
+                session.ApiToken!, session.AccountId!, session.WorkerName!, "", ct);
 
-            var successMsg = string.IsNullOrEmpty(subdomain)
-                ? $"""
-                    <b>Deployment Complete! (Cfnew)</b>
+            completed.Add("KV namespace created and bound to Pages project");
 
-                    {string.Join("\n", completed.Select(s => $"  \u2713 {s}"))}
+            await bot.SendMessage(chatId,
+                "<b>Step 3/4:</b> Uploading Pages deployment...",
+                parseMode: ParseMode.Html, cancellationToken: ct);
 
-                    <b>Worker name:</b> <code>{session.WorkerName}</code>
+            // 3. Create zip with _worker.js + wrangler.toml and deploy
+            var scriptContent = WorkerScript.GetScript(DeploymentType.Cfnew);
+            var zipBytes = CreatePagesZip(scriptContent);
 
-                    <b>URLs:</b> Check your Cloudflare dashboard at
-                    <a href="https://dash.cloudflare.com">https://dash.cloudflare.com</a>
-                    to find your workers.dev subdomain.
+            await _cloudflareApi.UploadPagesDeploymentAsync(
+                session.ApiToken!, session.AccountId!, session.WorkerName!, zipBytes, ct);
 
-                    Send /start to deploy another Worker.
-                    """
-                : $"""
-                    <b>Deployment Complete! (Cfnew)</b>
+            completed.Add("Pages deployment uploaded");
 
-                    {string.Join("\n", completed.Select(s => $"  \u2713 {s}"))}
+            await bot.SendMessage(chatId,
+                "<b>Step 4/4:</b> Finalizing...",
+                parseMode: ParseMode.Html, cancellationToken: ct);
 
-                    <b>Worker name:</b> <code>{session.WorkerName}</code>
+            var successMsg = $"""
+                <b>Deployment Complete! (Cfnew - Pages)</b>
 
-                    <b>Worker URL:</b>
-                    <a href="https://{session.WorkerName}.{subdomain}.workers.dev">https://{session.WorkerName}.{subdomain}.workers.dev</a>
+                {string.Join("\n", completed.Select(s => $"  \u2713 {s}"))}
 
-                    Send /start to deploy another Worker.
-                    """;
+                <b>Project name:</b> <code>{session.WorkerName}</code>
+
+                <b>Your Pages URL:</b>
+                <a href="https://{session.WorkerName}.pages.dev">https://{session.WorkerName}.pages.dev</a>
+
+                Note: Your KV is configured. Open the panel in browser and configure your settings.
+
+                Send /start to deploy another Worker.
+                """;
 
             await bot.SendMessage(chatId, successMsg,
                 parseMode: ParseMode.Html, cancellationToken: ct);
@@ -904,7 +907,7 @@ public sealed class ConversationHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Cfnew deployment failed for user {UserId}", session.UserId);
+            _logger.LogError(ex, "Cfnew Pages deployment failed for user {UserId}", session.UserId);
             session.CurrentStep = ConversationStep.Error;
 
             var errorMsg = $"""
@@ -922,6 +925,28 @@ public sealed class ConversationHandler
             await bot.SendMessage(chatId, errorMsg,
                 parseMode: ParseMode.Html, cancellationToken: ct);
         }
+    }
+
+    private static byte[] CreatePagesZip(string scriptContent)
+    {
+        using var ms = new System.IO.MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            // Add _worker.js
+            var workerEntry = archive.CreateEntry("_worker.js");
+            using (var writer = new System.IO.StreamWriter(workerEntry.Open()))
+            {
+                writer.Write(scriptContent);
+            }
+
+            // Add wrangler.toml
+            var tomlEntry = archive.CreateEntry("wrangler.toml");
+            using (var writer = new System.IO.StreamWriter(tomlEntry.Open()))
+            {
+                writer.Write("compatibility_date = \"2026-01-20\"\n");
+            }
+        }
+        return ms.ToArray();
     }
 
     private static string GenerateWorkerName()
