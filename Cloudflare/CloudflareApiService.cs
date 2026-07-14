@@ -362,14 +362,14 @@ public sealed class CloudflareApiService
                     {
                         kv_namespaces = new[]
                         {
-                            new { name = "KV", namespace_id = newKvId }
+                            new { name = "C", namespace_id = newKvId }
                         }
                     },
                     production = new
                     {
                         kv_namespaces = new[]
                         {
-                            new { name = "KV", namespace_id = newKvId }
+                            new { name = "C", namespace_id = newKvId }
                         }
                     }
                 }
