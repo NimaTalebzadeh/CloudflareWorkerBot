@@ -360,16 +360,16 @@ public sealed class CloudflareApiService
                 {
                     preview = new
                     {
-                        kv_namespaces = new[]
+                        kv_namespaces = new Dictionary<string, object>
                         {
-                            new { name = "C", namespace_id = newKvId }
+                            ["C"] = new { namespace_id = newKvId }
                         }
                     },
                     production = new
                     {
-                        kv_namespaces = new[]
+                        kv_namespaces = new Dictionary<string, object>
                         {
-                            new { name = "C", namespace_id = newKvId }
+                            ["C"] = new { namespace_id = newKvId }
                         }
                     }
                 }
@@ -403,16 +403,16 @@ public sealed class CloudflareApiService
                 {
                     preview = new
                     {
-                        secrets = new[]
+                        secrets = new Dictionary<string, object>
                         {
-                            new { name = secretName, value = secretValue }
+                            [secretName] = new { value = secretValue }
                         }
                     },
                     production = new
                     {
-                        secrets = new[]
+                        secrets = new Dictionary<string, object>
                         {
-                            new { name = secretName, value = secretValue }
+                            [secretName] = new { value = secretValue }
                         }
                     }
                 }
