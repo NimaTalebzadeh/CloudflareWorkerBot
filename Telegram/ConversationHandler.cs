@@ -845,11 +845,12 @@ public sealed class ConversationHandler
     private async Task RunCfnewDeploymentAsync(ITelegramBotClient bot, long chatId, UserSession session, CancellationToken ct)
     {
         var completed = new List<string>();
+        var uuid = WorkerScript.GenerateUuid();
 
         try
         {
             await bot.SendMessage(chatId,
-                "<b>Step 1/4:</b> Creating Pages project...",
+                "<b>Step 1/5:</b> Creating Pages project...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
             // 1. Create Pages project (or use existing)
@@ -859,7 +860,7 @@ public sealed class ConversationHandler
             completed.Add("Pages project created");
 
             await bot.SendMessage(chatId,
-                "<b>Step 2/4:</b> Creating KV namespace & binding...",
+                "<b>Step 2/5:</b> Creating KV namespace & binding...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
             // 2. Create KV namespace and bind to Pages project
@@ -869,10 +870,21 @@ public sealed class ConversationHandler
             completed.Add("KV namespace created and bound to Pages project");
 
             await bot.SendMessage(chatId,
-                "<b>Step 3/4:</b> Uploading Pages deployment...",
+                "<b>Step 3/5:</b> Setting UUID variable...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
-            // 3. Create zip with _worker.js + wrangler.toml and deploy
+            // 3. Set UUID secret/variable
+            await _cloudflareApi.SetPagesSecretAsync(
+                session.ApiToken!, session.AccountId!, session.WorkerName!,
+                "u", uuid, ct);
+
+            completed.Add("UUID variable 'u' configured");
+
+            await bot.SendMessage(chatId,
+                "<b>Step 4/5:</b> Uploading Pages deployment...",
+                parseMode: ParseMode.Html, cancellationToken: ct);
+
+            // 4. Create zip with _worker.js + wrangler.toml and deploy
             var scriptContent = WorkerScript.GetScript(DeploymentType.Cfnew);
             var zipBytes = CreatePagesZip(scriptContent);
 
@@ -882,7 +894,7 @@ public sealed class ConversationHandler
             completed.Add("Pages deployment uploaded");
 
             await bot.SendMessage(chatId,
-                "<b>Step 4/4:</b> Finalizing...",
+                "<b>Step 5/5:</b> Finalizing...",
                 parseMode: ParseMode.Html, cancellationToken: ct);
 
             var successMsg = $"""
@@ -892,10 +904,12 @@ public sealed class ConversationHandler
 
                 <b>Project name:</b> <code>{session.WorkerName}</code>
 
-                <b>Your Pages URL:</b>
-                <a href="https://{session.WorkerName}.pages.dev">https://{session.WorkerName}.pages.dev</a>
+                <b>Dashboard URL:</b>
+                <a href="https://{session.WorkerName}.pages.dev/{uuid}">https://{session.WorkerName}.pages.dev/{uuid}</a>
 
-                Note: Your KV is configured. Open the panel in browser and configure your settings.
+                <b>UUID:</b> <code>{uuid}</code>
+
+                Save your UUID — you'll need it to access the panel.
 
                 Send /start to deploy another Worker.
                 """;
