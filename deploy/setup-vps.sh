@@ -7,7 +7,7 @@ mkdir -p "$BOTS_DIR"
 # 1. Define your 4 bots
 REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
 BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "ytdl-bot")
-GIT_URLS=("https://github.com/NimaTalebzadeh/AdvancedCalculaterBot.git" "https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git" "https://github.com/NimaTalebzadeh/TelegramSemanticSearch.git" "https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git")
+GIT_URLS=("https://github.com/NimaTalebzadeh/AdvancedCalculatorBot.git" "https://github.com/NimaTalebzadeh/CloudflareWorkerBot.git" "https://github.com/NimaTalebzadeh/TelegramSemanticSearch.git" "https://github.com/NimaTalebzadeh/YouTubeDownloaderBot.git")
 
 # 2. Clone/Init Git repositories
 for i in "${!REPOS[@]}"; do
@@ -43,7 +43,7 @@ EOF
 cat > "$BOTS_DIR/docker-compose.yml" << 'EOF'
 services:
   calculator-bot:
-    build: ./AdvancedCalculaterBot
+    build: ./AdvancedCalculatorBot
     container_name: advanced-calculator-bot
     restart: unless-stopped
     environment:
@@ -91,7 +91,7 @@ set -e
 
 cd /opt/bots
 
-REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
+REPOS=("AdvancedCalculatorBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
 BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "ytdl-bot")
 
 for i in "${!REPOS[@]}"; do

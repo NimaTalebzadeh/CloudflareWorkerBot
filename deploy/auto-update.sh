@@ -3,7 +3,7 @@ set -e
 
 cd /opt/bots
 
-REPOS=("AdvancedCalculaterBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
+REPOS=("AdvancedCalculatorBot" "CloudflareWorkerBot" "TelegramSemanticSearch" "YouTubeDownloaderBot")
 BOTS=("calculator-bot" "cloudflare-bot" "semantic-search-bot" "ytdl-bot")
 
 for i in "${!REPOS[@]}"; do
