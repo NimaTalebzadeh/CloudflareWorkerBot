@@ -115,7 +115,7 @@ public sealed class ConversationHandler
             await bot.SendMessage(chatId,
                 "<b>Cfnew selected!</b>\n\n" +
                 "Open this link to create an API token with the right permissions pre-selected:\n\n" +
-                "<a href=\"https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22pages%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&name=CloudflareWorkerBot-Token\">https://dash.cloudflare.com/profile/api-tokens?...&amp;name=CloudflareWorkerBot-Token</a>\n\n" +
+                "<a href=\"https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22pages%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&name=CloudflareWorkerBot-Token\">https://dash.cloudflare.com/profile/api-tokens?...&amp;name=CloudflareWorkerBot-Token</a>\n\n" +
                 "Just review the permissions and click <b>Create Token</b>.\n\n" +
                 "Send me the token (shown only once!):",
                 parseMode: ParseMode.Html, cancellationToken: ct);
@@ -148,7 +148,7 @@ public sealed class ConversationHandler
                 {
                     DeploymentType.Nahan => "Workers Scripts Edit and D1 Edit",
                     DeploymentType.Yonggekkk => "Workers Scripts Edit",
-                    DeploymentType.Cfnew => "Workers Scripts, Workers KV Storage, and Cloudflare Pages Edit",
+                    DeploymentType.Cfnew => "Cloudflare Pages Edit",
                     _ => "Workers Scripts Edit and Workers KV Storage Edit"
                 };
                 await bot.SendMessage(chatId,
